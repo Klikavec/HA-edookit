@@ -70,7 +70,9 @@
           "off_school_interval": "Refresh interval outside school hours",
           "quiet_start": "No refreshes from",
           "quiet_end": "No refreshes until",
-          "travel_time": "Travel time from school to home"
+          "travel_time": "Travel time from school to home",
+          "school_student_id": "ID žáka pro panel (prázdné pro jediného žáka)",
+          "school_mqtt_topic": "MQTT topic školního panelu (končí /school/set)"
         },
         "data_description": {
           "timetable_update_time": "The timetable is downloaded once a day at this time (and when Home Assistant starts or you press Refresh).",

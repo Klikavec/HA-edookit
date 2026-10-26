@@ -5,3 +5,7 @@ __pycache__/
 .venv/
 venv/
 edookit_debug/
+.storage/
+*.secret
+*.secret.json
+.env

@@ -11,7 +11,16 @@ from homeassistant.core import HomeAssistant
 from .const import CONF_API_PASSWORD, CONF_API_USERNAME, CONF_ICAL_URL
 from .coordinator import EdookitConfigEntry
 
-TO_REDACT = {CONF_PASSWORD, CONF_USERNAME, CONF_API_PASSWORD, CONF_API_USERNAME, CONF_ICAL_URL, "student"}
+TO_REDACT = {
+    CONF_PASSWORD,
+    CONF_USERNAME,
+    CONF_API_PASSWORD,
+    CONF_API_USERNAME,
+    CONF_ICAL_URL,
+    "student",
+    "school_student_id",
+    "school_mqtt_topic",
+}
 
 
 def _shape(value: Any) -> Any:

@@ -17,12 +17,16 @@ from pytest_homeassistant_custom_component.common import (
     async_fire_time_changed,
 )
 
-from custom_components.edookit.api import EdookitAuthError
+from custom_components.edookit.api import EdookitAuthError, EdookitConnectionError
 from custom_components.edookit.const import DOMAIN, EVENT_NEW_ITEM
 from custom_components.edookit.diagnostics import async_get_config_entry_diagnostics
 from custom_components.edookit.sensor import week_grades
 
 from .conftest import load
+
+HOMEWORK_PAGE = """<h2>Domácí úkoly</h2><table><tr><th>Termín</th><th>Předmět</th><th>Název</th></tr>
+<tr><td>27. 9. 2026</td><td>Matematika</td>
+<td><a href="/assignments/detail?assignment=999">Procvičování</a></td></tr></table>"""
 
 PAGES = {
     "/": "dashboard.html",
@@ -32,6 +36,59 @@ PAGES = {
     "/timetable/upcoming": "upcoming.html",
     "/payments/": "payments.html",
 }
+
+
+async def test_school_retains_overdue_items_on_network_and_parser_errors_then_clears_confirmed_empty(
+    hass: HomeAssistant, freezer: FrozenDateTimeFactory, mock_client, pages
+) -> None:
+    pages["/assignments/"] = HOMEWORK_PAGE
+    pages["/exams/"] = "<h2>Písemky</h2><p>Žádné písemky</p>"
+    entry = await _setup(hass, freezer)
+    child = entry.runtime_data.children[0]
+    before = child.data.data["assignments"]
+    assert len(before) == 1  # still open, even though it is overdue
+    payload = entry.runtime_data.central.data[""]
+    assert payload["sections"]["homework"] == "ok"
+    assert payload["homework"][0]["id"]
+    assert payload["last_updated"] is not None
+
+    async def failing_page(path):
+        if path == "/assignments/":
+            raise EdookitConnectionError("HTTP 503")
+        return pages.get(path, "<html></html>")
+
+    with patch.object(entry.runtime_data.client, "async_get_page", side_effect=failing_page):
+        await entry.runtime_data.central.async_manual_refresh()
+    assert child.data.data["assignments"] == before
+    assert entry.runtime_data.central.data[""]["sections"]["homework"] == "stale"
+    pages["/assignments/"] = "<main>Maintenance</main>"
+    await entry.runtime_data.central.async_manual_refresh()
+    assert child.data.data["assignments"] == before
+    assert entry.runtime_data.central.data[""]["sync_status"] == "stale"
+
+    # Reload uses private Store data before a parser can successfully read this section again.
+    assert await hass.config_entries.async_reload(entry.entry_id)
+    await hass.async_block_till_done()
+    assert entry.runtime_data.children[0].data.data["assignments"] == before
+    pages["/assignments/"] = '<div class="assignmentsContainer"><p>Žádné úkoly</p></div>'
+    await entry.runtime_data.central.async_manual_refresh()
+    assert entry.runtime_data.central.data[""]["homework"] == []
+    assert entry.runtime_data.central.data[""]["sections"]["homework"] == "ok"
+
+
+async def test_central_quiet_period_and_explicit_manual_refresh(
+    hass: HomeAssistant, freezer: FrozenDateTimeFactory, mock_client, pages
+) -> None:
+    entry = await _setup(hass, freezer)
+    freezer.move_to("2026-09-28 23:00:00+02:00")
+    original = entry.runtime_data.client.async_get_page
+    with patch.object(entry.runtime_data.client, "async_get_page", wraps=original) as getter:
+        await entry.runtime_data.central.async_refresh()
+        assert getter.call_count == 0
+        await entry.runtime_data.central.async_manual_refresh()
+        assert getter.call_count > 0
+        assert not any("/detail" in call.args[0] for call in getter.call_args_list)
+
 
 ENTRY_DATA = {"school": "skola", "username": "rodic@example.com", "password": "secret", "login_method": "auto"}
 
@@ -136,14 +193,10 @@ async def test_setup_entities(hass: HomeAssistant, freezer: FrozenDateTimeFactor
     assert float(hass.states.get("sensor.edookit_jan_novak_payments_due").state) == 1250.0
 
     full = hass.states.get("sensor.edookit_jan_novak_last_message_text")
-    assert full.state.startswith("Vážení rodiče, zveme vás na třídní schůzky")
+    # Read-only mode uses the inbox preview and never opens a message detail.
+    assert full.state == "Zveme vás na třídní schůzky ve čtvrtek…"
+    assert full.attributes["attachments"] == []
     assert full.attributes["subject"] == "Třídní schůzky"
-    assert full.attributes["text"].count("\n") == 2
-    assert full.attributes["attachments"] == ["pozvanka.pdf"]
-    assert full.attributes["notification"].startswith(
-        "✉️ Třídní schůzky\nMgr. Petra Svobodová · Dnes, 8:15\n\nVážení rodiče,"
-    )
-    assert full.attributes["notification"].endswith("https://skola.edookit.net/messages/detail?message=123")
 
     cal = hass.states.get("calendar.edookit_jan_novak_timetable")
     assert cal.attributes["message"] == "M"
@@ -216,21 +269,19 @@ async def test_options_flow(hass: HomeAssistant, freezer: FrozenDateTimeFactory,
     result = await hass.config_entries.options.async_configure(
         result["flow_id"],
         {
-            "timetable_update_time": "06:30:00",
-            "scan_interval": 30,
             "timetable_weeks": 1,
             "timetable_source": "portal",
             "fire_events": False,
             "public_api": False,
-            "smart_refresh": False,
         },
     )
     assert result["type"] is FlowResultType.CREATE_ENTRY
     await hass.async_block_till_done()
-    assert entry.options["timetable_update_time"] == "06:30:00"
+    assert entry.options["timetable_weeks"] == 1
     assert entry.options["ical_url"] == ""
     assert entry.state is ConfigEntryState.LOADED
-    assert entry.runtime_data.children[0].data.update_interval.total_seconds() == 1800
+    assert entry.runtime_data.children[0].data.update_interval is None
+    assert entry.runtime_data.central.update_interval.total_seconds() == 2700
 
 
 async def test_reauth_flow(hass: HomeAssistant, freezer: FrozenDateTimeFactory, mock_client) -> None:
@@ -305,8 +356,10 @@ async def test_two_children(hass: HomeAssistant, freezer: FrozenDateTimeFactory,
         assert events[0].data["child_id"] in ("101", "102")
 
 
-async def test_stale_child_devices_removed(hass: HomeAssistant, freezer: FrozenDateTimeFactory, mock_client) -> None:
-    """Devices of children that are no longer detected disappear on reload."""
+async def test_discovery_preserves_existing_child_devices(
+    hass: HomeAssistant, freezer: FrozenDateTimeFactory, mock_client
+) -> None:
+    """Incomplete portal discovery must not delete user devices."""
     from homeassistant.helpers import device_registry as dr
 
     entry = MockConfigEntry(domain=DOMAIN, data=ENTRY_DATA, title="Jan Novák")
@@ -319,8 +372,11 @@ async def test_stale_child_devices_removed(hass: HomeAssistant, freezer: FrozenD
     freezer.move_to("2026-09-28 08:10:00+02:00")
     assert await hass.config_entries.async_setup(entry.entry_id)
     await hass.async_block_till_done()
-    assert registry.async_get(stale.id) is None
-    assert registry.async_get_device(identifiers={(DOMAIN, entry.entry_id)}) is not None
+    assert registry.async_get(stale.id) is not None
+    assert any(
+        (DOMAIN, entry.entry_id) in device.identifiers
+        for device in dr.async_entries_for_config_entry(registry, entry.entry_id)
+    )
 
 
 async def test_family_portal_two_children(hass: HomeAssistant, freezer: FrozenDateTimeFactory, pages) -> None:
@@ -369,8 +425,11 @@ async def test_family_portal_two_children(hass: HomeAssistant, freezer: FrozenDa
     assert hass.states.get("sensor.edookit_petr_novak_arrival_home").state == "2026-10-01T11:45:00+00:00"
     # Friday: lessons replaced by the trip 8:00-13:30, which still counts as a school day.
     assert hass.states.get("sensor.edookit_petr_novak_next_school_day_end").state == "2026-10-02T11:30:00+00:00"
-    # Smart refresh: 5 minutes after the current lesson ends.
-    assert entry.runtime_data.smart.plan.when.isoformat() == "2026-10-01T09:45:00+02:00"
+    # Exactly one account coordinator schedules all portal requests.
+    assert entry.runtime_data.central.update_interval.total_seconds() == 2700
+    assert all(
+        c.data.update_interval is None and c.timetable.update_interval is None for c in entry.runtime_data.children
+    )
 
     # In the break the sensor shows the next subject (9:44, just before the 9:45 refresh).
     freezer.move_to("2026-10-01 09:44:00+02:00")

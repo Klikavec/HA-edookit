@@ -28,5 +28,4 @@ class RefreshButton(EdookitEntity, ButtonEntity):
         super().__init__(entry, child, child.data, "refresh")
 
     async def async_press(self) -> None:
-        await self.child.timetable.async_refresh()
-        await self.child.data.async_refresh()
+        await self.runtime.central.async_manual_refresh()

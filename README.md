@@ -1,3 +1,11 @@
+# Vlastní fork 0.2.0
+
+Tato verze používá jeden centrální koordinátor, zachovává poslední data při chybách a publikuje verzovaný školní MQTT payload. Aktuální chování, instalace a rollback: [Školní panel](docs/school-panel.md).
+
+Níže je původní dokumentace upstreamu; jeho denní časovače a automatické čtení detailů zpráv se na tento fork nevztahují. MIT licence a autorství zůstávají zachovány.
+
+---
+
 # Edookit pro Home Assistant
 
 [![hacs_badge](https://img.shields.io/badge/HACS-Custom-41BDF5.svg)](https://hacs.xyz/)

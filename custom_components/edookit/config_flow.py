@@ -22,40 +22,25 @@ from homeassistant.helpers.selector import (
     TextSelector,
     TextSelectorConfig,
     TextSelectorType,
-    TimeSelector,
 )
 import voluptuous as vol
 
 from .api import EdookitAuthError, EdookitClient, EdookitConnectionError, normalize_school
 from .const import (
-    CONF_AFTER_LESSON_DELAY,
     CONF_API_PASSWORD,
     CONF_API_STUDENT_ID,
     CONF_API_USERNAME,
     CONF_FIRE_EVENTS,
     CONF_ICAL_URL,
     CONF_LOGIN_METHOD,
-    CONF_OFF_SCHOOL_INTERVAL,
     CONF_OIDC_CLIENT_ID,
     CONF_PUBLIC_API,
-    CONF_QUIET_END,
-    CONF_QUIET_START,
-    CONF_SCAN_INTERVAL,
     CONF_SCHOOL,
-    CONF_SMART_REFRESH,
     CONF_TIMETABLE_SOURCE,
-    CONF_TIMETABLE_TIME,
     CONF_TRAVEL_TIME,
     CONF_WEEKS,
-    DEFAULT_AFTER_LESSON_DELAY,
     DEFAULT_FIRE_EVENTS,
-    DEFAULT_OFF_SCHOOL_INTERVAL,
     DEFAULT_PUBLIC_API,
-    DEFAULT_QUIET_END,
-    DEFAULT_QUIET_START,
-    DEFAULT_SCAN_INTERVAL,
-    DEFAULT_SMART_REFRESH,
-    DEFAULT_TIMETABLE_TIME,
     DEFAULT_TRAVEL_TIME,
     DEFAULT_WEEKS,
     DOMAIN,
@@ -195,7 +180,15 @@ class EdookitOptionsFlow(OptionsFlow):
         """Single options page."""
         if user_input is not None:
             # Empty optional text fields are dropped by the frontend; keep them cleared.
-            for key in (CONF_ICAL_URL, CONF_API_USERNAME, CONF_API_PASSWORD, CONF_API_STUDENT_ID, CONF_OIDC_CLIENT_ID):
+            for key in (
+                CONF_ICAL_URL,
+                CONF_API_USERNAME,
+                CONF_API_PASSWORD,
+                CONF_API_STUDENT_ID,
+                CONF_OIDC_CLIENT_ID,
+                "school_student_id",
+                "school_mqtt_topic",
+            ):
                 user_input.setdefault(key, "")
             return self.async_create_entry(data=user_input)
 
@@ -208,14 +201,6 @@ class EdookitOptionsFlow(OptionsFlow):
             )
 
         schema: dict[Any, Any] = {
-            vol.Required(
-                CONF_TIMETABLE_TIME, default=opts.get(CONF_TIMETABLE_TIME, DEFAULT_TIMETABLE_TIME)
-            ): TimeSelector(),
-            vol.Required(
-                CONF_SCAN_INTERVAL, default=opts.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL)
-            ): NumberSelector(
-                NumberSelectorConfig(min=0, max=1440, step=5, mode=NumberSelectorMode.BOX, unit_of_measurement="min")
-            ),
             vol.Required(CONF_WEEKS, default=opts.get(CONF_WEEKS, DEFAULT_WEEKS)): NumberSelector(
                 NumberSelectorConfig(min=1, max=4, step=1, mode=NumberSelectorMode.SLIDER)
             ),
@@ -226,21 +211,6 @@ class EdookitOptionsFlow(OptionsFlow):
                     mode=SelectSelectorMode.DROPDOWN,
                 )
             ),
-            vol.Required(
-                CONF_SMART_REFRESH, default=opts.get(CONF_SMART_REFRESH, DEFAULT_SMART_REFRESH)
-            ): BooleanSelector(),
-            vol.Required(
-                CONF_AFTER_LESSON_DELAY, default=opts.get(CONF_AFTER_LESSON_DELAY, DEFAULT_AFTER_LESSON_DELAY)
-            ): NumberSelector(
-                NumberSelectorConfig(min=0, max=60, step=1, mode=NumberSelectorMode.BOX, unit_of_measurement="min")
-            ),
-            vol.Required(
-                CONF_OFF_SCHOOL_INTERVAL, default=opts.get(CONF_OFF_SCHOOL_INTERVAL, DEFAULT_OFF_SCHOOL_INTERVAL)
-            ): NumberSelector(
-                NumberSelectorConfig(min=15, max=1440, step=15, mode=NumberSelectorMode.BOX, unit_of_measurement="min")
-            ),
-            vol.Required(CONF_QUIET_START, default=opts.get(CONF_QUIET_START, DEFAULT_QUIET_START)): TimeSelector(),
-            vol.Required(CONF_QUIET_END, default=opts.get(CONF_QUIET_END, DEFAULT_QUIET_END)): TimeSelector(),
             vol.Required(CONF_TRAVEL_TIME, default=opts.get(CONF_TRAVEL_TIME, DEFAULT_TRAVEL_TIME)): NumberSelector(
                 NumberSelectorConfig(min=0, max=180, step=1, mode=NumberSelectorMode.BOX, unit_of_measurement="min")
             ),
@@ -253,6 +223,8 @@ class EdookitOptionsFlow(OptionsFlow):
             (CONF_API_PASSWORD, TextSelectorType.PASSWORD),
             (CONF_API_STUDENT_ID, TextSelectorType.TEXT),
             (CONF_OIDC_CLIENT_ID, TextSelectorType.TEXT),
+            ("school_student_id", TextSelectorType.TEXT),
+            ("school_mqtt_topic", TextSelectorType.TEXT),
         ):
             marker, selector = text(key, kind)
             schema[marker] = selector

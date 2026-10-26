@@ -2,18 +2,22 @@
   "domain": "edookit",
   "name": "Edookit",
   "codeowners": [
-    "@joshuaaaaa"
+    "@joshuaaaaa",
+    "@Klikavec"
   ],
   "config_flow": true,
-  "documentation": "https://github.com/joshuaaaaa/HA-edookit",
+  "documentation": "https://github.com/Klikavec/HA-edookit",
   "integration_type": "service",
   "iot_class": "cloud_polling",
-  "issue_tracker": "https://github.com/joshuaaaaa/HA-edookit/issues",
+  "issue_tracker": "https://github.com/Klikavec/HA-edookit/issues",
   "loggers": [
     "custom_components.edookit"
   ],
   "requirements": [
     "beautifulsoup4>=4.12.0"
   ],
-  "version": "0.1.0"
+  "version": "0.2.0",
+  "after_dependencies": [
+    "mqtt"
+  ]
 }

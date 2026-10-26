@@ -15,6 +15,7 @@ from dataclasses import asdict, dataclass, field
 from datetime import date, datetime, time, timedelta
 import re
 from typing import Any
+from urllib.parse import parse_qs, urlsplit
 
 from bs4 import BeautifulSoup, Tag
 
@@ -499,6 +500,9 @@ def grade_averages(grades: list[dict[str, Any]]) -> dict[str, float]:
 
 def parse_assignments(html: str | BeautifulSoup, today: date | None = None) -> list[dict[str, Any]]:
     """Parse ``/assignments/`` (homework)."""
+    portal = _parse_assignment_rows(html, today, exam=False)
+    if portal is not None:
+        return portal
     result = []
     for table in parse_tables(html):
         for row in table:
@@ -528,6 +532,9 @@ def parse_assignments(html: str | BeautifulSoup, today: date | None = None) -> l
 
 def parse_exams(html: str | BeautifulSoup, today: date | None = None) -> list[dict[str, Any]]:
     """Parse ``/exams/`` (written tests)."""
+    portal = _parse_assignment_rows(html, today, exam=True)
+    if portal is not None:
+        return portal
     result = []
     for table in parse_tables(html):
         for row in table:
@@ -549,6 +556,56 @@ def parse_exams(html: str | BeautifulSoup, today: date | None = None) -> list[di
             )
     if not result:
         result = _parse_boxes(html, today, date_keys=(".date", "time"))
+    return result
+
+
+def _parse_assignment_rows(html: str | BeautifulSoup, today: date | None, *, exam: bool) -> list[dict[str, Any]] | None:
+    """Portal list rows include responsive labels and nested descriptions, not generic cells."""
+    soup = soupify(html)
+    container = (
+        soup.select_one("#content")
+        if exam and soup.select_one(".homeworks_table")
+        else soup.select_one(".assignmentsContainer")
+    )
+    if container is None:
+        return None
+    result = []
+    for row in container.select("ul.table_row"):
+        link = row.select_one(".c2 a[href*='/exams/detail']" if exam else ".c2 a[href*='/assignments/detail']")
+        if link is None:
+            continue
+        when_el = row.select_one(".c1 p b")
+        subject_el = row.select_one(".c1 .link_info")
+        created_el = row.select_one(".c4 .smaller p:last-child")
+        raw = _text(when_el)
+        when = parse_datetime(raw, today)
+        if when is None:
+            raise ValueError("assignment_date_unrecognised")
+        subject = ""
+        if subject_el:
+            subject = clean(subject_el.parent.get_text(" ").replace(subject_el.get_text(" "), ""))
+        description = " ".join(_text(p) for p in row.select(".c2 > p") if _text(p))
+        url = normalize_url(link.get("href"))
+        ident = parse_qs(urlsplit(url or "").query).get("assignment", [None])[0]
+        created = parse_datetime(_text(created_el), today)
+        checkbox = row.select_one("input[type='checkbox']")
+        result.append(
+            {
+                "id": ident,
+                "title": _text(link),
+                "subject": subject,
+                "date" if exam else "due": when.isoformat(),
+                "date_raw" if exam else "due_raw": raw,
+                "assigned": created.isoformat() if created else None,
+                "description": description,
+                "teacher": _text(row.select_one(".c4 b")),
+                "done": bool(checkbox and checkbox.has_attr("checked"))
+                or bool(set(row.get("class", [])) & {"done", "completed", "submitted"}),
+                "url": url,
+            }
+        )
+    if not result and not any("žádné úkoly" in _text(p).casefold() for p in container.select("p")):
+        raise ValueError("assignment_layout_unrecognised")
     return result
 
 

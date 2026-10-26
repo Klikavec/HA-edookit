@@ -38,6 +38,7 @@ async def async_setup_entry(
     entities: list[SensorEntity] = []
     for child in entry.runtime_data.children:
         entities += [
+            SchoolSensor(entry, child),
             TimetableSensor(entry, child),
             LessonsTomorrowSensor(entry, child),
             CurrentLessonSensor(entry, child),
@@ -73,6 +74,25 @@ async def async_setup_entry(
 
 
 # ----------------------------------------------------------------- timetable
+
+
+class SchoolSensor(EdookitEntity, SensorEntity):
+    """Full normalized payload for a single student's display."""
+
+    _attr_name = "Školní přehled"
+    _attr_icon = "mdi:school"
+    _unrecorded_attributes = frozenset({"timetable", "homework", "exams"})
+
+    def __init__(self, entry, child):
+        super().__init__(entry, child, entry.runtime_data.central, "school")
+
+    @property
+    def native_value(self):
+        return (self.coordinator.data or {}).get(self.child.child.key, {}).get("sync_status", "loading")
+
+    @property
+    def extra_state_attributes(self):
+        return (self.coordinator.data or {}).get(self.child.child.key, {})
 
 
 class _TimetableBase(EdookitEntity, SensorEntity):
@@ -604,7 +624,11 @@ class _ListSensor(_DataBase):
             {k: i.get(k) for k in self._fields if i.get(k) not in (None, "")} | {"url": self._url(i.get("url"))}
             for i in self.items[:LIST_LIMIT]
         ]
-        return {"items": items, "next": items[0] if items else None}
+        return {
+            "items": items,
+            "next": items[0] if items else None,
+            "sync_status": self.data.get("section_status", {}).get(self._list_key, "unknown"),
+        }
 
 
 class HomeworkSensor(_ListSensor):
@@ -612,7 +636,7 @@ class HomeworkSensor(_ListSensor):
 
     _attr_icon = "mdi:book-edit-outline"
     _list_key = "assignments"
-    _fields = ("title", "subject", "due", "description", "teacher")
+    _fields = ("id", "title", "subject", "due", "assigned", "description", "teacher", "done")
 
     def __init__(self, entry: EdookitConfigEntry, child: ChildRuntime) -> None:
         super().__init__(entry, child, "homework")
@@ -623,7 +647,7 @@ class ExamsSensor(_ListSensor):
 
     _attr_icon = "mdi:file-document-edit-outline"
     _list_key = "exams"
-    _fields = ("title", "subject", "date", "description")
+    _fields = ("id", "title", "subject", "date", "description")
 
     @property
     def items(self) -> list[dict[str, Any]]:

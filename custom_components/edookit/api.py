@@ -407,7 +407,7 @@ class EdookitClient:
                 f"two-factor login which is not supported) (HTTP {resp.status})"
             )
         # Anything else (e.g. the endpoint changed): don't block, try the browser flow.
-        _LOGGER.debug("Access code pre-check returned HTTP %s: %s", resp.status, text[:300])
+        _LOGGER.debug("Access code pre-check returned HTTP %s", resp.status)
 
     async def _login_plus4u_codes(self, login_page: Response) -> None:
         """Plus4U "+4U Access" (access code 1 + access code 2)."""
@@ -602,6 +602,10 @@ class EdookitClient:
                     await self.async_get_page("/timetable/?do=familyTimetable-resetFilter")
         self._timetable_cache = (weeks, now, pages)
         return pages
+
+    def invalidate_timetable_cache(self) -> None:
+        """A manual refresh must request current portal data even inside the cache TTL."""
+        self._timetable_cache = None
 
     # -------------------------------------------------------------- REST API
 

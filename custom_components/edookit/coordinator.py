@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta
 import logging
+import re
 from typing import Any
 
 from homeassistant.config_entries import ConfigEntry
@@ -41,6 +42,7 @@ from .const import (
     WEEKDAYS_CS_SHORT,
 )
 from .ical import ical_to_lessons, parse_ical
+from .school import stable_items
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -72,6 +74,7 @@ class EdookitRuntimeData:
     stored: dict[str, Any]
     children: list[ChildRuntime]
     smart: Any = None  # SmartRefresh when smart refresh is enabled
+    central: Any = None
 
 
 type EdookitConfigEntry = ConfigEntry[EdookitRuntimeData]
@@ -138,14 +141,24 @@ class TimetableCoordinator(DataUpdateCoordinator[dict[str, Any]]):
     async def _async_update_data(self) -> dict[str, Any]:
         return await _as_child(self.client, self.child, self._fetch)
 
+    async def async_refresh(self) -> None:
+        if central := getattr(self, "central", None):
+            await central.async_manual_refresh()
+        else:
+            await super().async_refresh()
+
+    async def async_request_refresh(self) -> None:
+        if central := getattr(self, "central", None):
+            await central.async_manual_refresh()
+        else:
+            await super().async_request_refresh()
+
     async def _fetch(self) -> dict[str, Any]:
         entry = self.config_entry
         weeks = int(_opt(entry, CONF_WEEKS, DEFAULT_WEEKS))
         today = dt_util.now().date()
         start = _week_start(today)
         # On a weekend the current week is over; show the next one(s).
-        if today.weekday() >= 5:
-            start += timedelta(days=7)
         end = start + timedelta(days=7 * weeks)
 
         source = _opt(entry, CONF_TIMETABLE_SOURCE, SOURCE_AUTO)
@@ -174,7 +187,7 @@ class TimetableCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         except EdookitError as err:
             raise UpdateFailed(f"Timetable update failed: {err}") from err
 
-        lessons = [ls for ls in lessons if start.isoformat() <= ls["date"] < end.isoformat()] or lessons
+        lessons = [ls for ls in lessons if start.isoformat() <= ls["date"] < end.isoformat()]
         lessons.sort(key=lambda ls: (ls["date"], ls.get("start") or "99:99"))
         _fill_order(lessons)
         parsers.assign_periods(lessons)
@@ -187,6 +200,7 @@ class TimetableCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             "bell": parsers.bell_schedule(lessons),
             "week_start": start.isoformat(),
             "updated": dt_util.now().isoformat(),
+            "sync_status": "ok",
         }
 
     async def _lessons_from_portal(self, weeks: int, today: date) -> list[dict[str, Any]]:
@@ -221,11 +235,7 @@ class TimetableCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             for html in pages:
                 add(parsers.parse_timetable(html, today))
         if not lessons:
-            _LOGGER.warning(
-                "No lessons found on the Edookit timetable page. If the school's "
-                "timetable is not empty, call the edookit.dump_pages service and "
-                "open an issue with the (anonymised) timetable HTML"
-            )
+            raise EdookitError("Timetable layout or empty week could not be confirmed")
         return lessons
 
     async def _lessons_from_ical(self, url: str, start: date, end: date) -> list[dict[str, Any]]:
@@ -356,6 +366,17 @@ PAGES = {
 }
 
 
+def validate_list_page(html: str, items: list[dict], key: str) -> None:
+    """Fail closed on an unrecognised portal layout, including unrelated tables."""
+    soup = parsers.soupify(html)
+    text = soup.get_text(" ", strip=True).casefold()
+    words = r"úkol|assignment|homework" if key == "assignments" else r"písem|test|exam"
+    if not re.search(words, text):
+        raise ValueError("unrecognised_list_page")
+    if not items and not re.search(r"žádn|nejsou|není|no (?:items|homework|tests|exams)|empty", text):
+        raise ValueError("empty_list_not_confirmed")
+
+
 class EdookitDataCoordinator(DataUpdateCoordinator[dict[str, Any]]):
     """Inbox, grades, homework, exams, events, attendance, payments."""
 
@@ -387,6 +408,7 @@ class EdookitDataCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
     async def _page(self, key: str, errors: dict[str, str]) -> str | None:
         if key in self._missing_pages:
+            errors[key] = "module_unavailable"
             return None
         try:
             return await self.client.async_get_page(PAGES[key])
@@ -401,6 +423,18 @@ class EdookitDataCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
     async def _async_update_data(self) -> dict[str, Any]:
         return await _as_child(self.client, self.child, self._fetch)
+
+    async def async_refresh(self) -> None:
+        if central := getattr(self, "central", None):
+            await central.async_manual_refresh()
+        else:
+            await super().async_refresh()
+
+    async def async_request_refresh(self) -> None:
+        if central := getattr(self, "central", None):
+            await central.async_manual_refresh()
+        else:
+            await super().async_request_refresh()
 
     async def _fetch(self) -> dict[str, Any]:
         entry = self.config_entry
@@ -437,7 +471,10 @@ class EdookitDataCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                     continue
                 try:
                     parsed[key] = parser(html, today)
+                    if key in ("assignments", "exams"):
+                        validate_list_page(html, parsed[key], key)
                 except Exception as err:
+                    parsed.pop(key, None)
                     _LOGGER.debug("Parsing %s failed", key, exc_info=True)
                     errors[key] = f"parse error: {err}"
             html = await self._page("payments", errors)
@@ -483,17 +520,17 @@ class EdookitDataCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         data["averages"] = parsers.grade_averages(grades)
 
         now_iso = datetime.combine(today, datetime.min.time()).isoformat()
-        assignments = parsed.get("assignments") or [
-            {"title": i["title"], "subject": "", "due": None, "description": i["description"], "url": i["url"]}
-            for i in inbox
-            if i["type"] == "assignment"
-        ]
+        assignments = parsed.get("assignments", [])
         data["assignments"] = sorted(
-            (a for a in assignments if not a.get("done") and (a.get("due") is None or a["due"] >= now_iso)),
+            (a for a in stable_items(assignments, "homework", self.child.key) if not a.get("done")),
             key=lambda a: a.get("due") or "9999",
         )
         data["exams"] = sorted(
-            (e for e in parsed.get("exams", []) if e.get("date") is None or e["date"] >= now_iso),
+            (
+                e
+                for e in stable_items(parsed.get("exams", []), "exam", self.child.key)
+                if e.get("date") is None or e["date"] >= now_iso
+            ),
             key=lambda e: e.get("date") or "9999",
         )
         data["events"] = sorted(
@@ -513,6 +550,30 @@ class EdookitDataCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
         data["student"] = self.student
         data["updated"] = dt_util.now().isoformat()
+        previous = self.data or {}
+        data["section_updated"] = dict(previous.get("section_updated", {}))
+        for page in PAGES:
+            if page not in errors:
+                data["section_updated"][page] = data["updated"]
+        field_pages = {
+            "assignments": "assignments",
+            "exams": "exams",
+            "events": "events",
+            "grades": "evaluations",
+            "averages": "evaluations",
+            "attendance": "attendance",
+            "payments": "payments",
+            "inbox": "inbox",
+            "unread": "inbox",
+            "messages": "inbox",
+            "latest_message": "inbox",
+            "action_items": "dashboard",
+        }
+        data["section_status"] = {key: "error" if key in errors else "ok" for key in PAGES}
+        for field, page in field_pages.items():
+            if page in errors and field in previous:
+                data[field] = previous[field]
+                data["section_status"][page] = "stale"
 
         if _opt(entry, CONF_FIRE_EVENTS, DEFAULT_FIRE_EVENTS):
             await self._fire_new_items(inbox)
@@ -543,24 +604,8 @@ class EdookitDataCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
     async def _detail(self, item: dict[str, Any] | None) -> dict[str, Any]:
         """Full text of an inbox item (cached; the list only has a preview)."""
-        url = (item or {}).get("url")
-        if not url or not url.startswith("/"):
-            return {}
-        cache: dict[str, Any] = self._stored.setdefault("details", {})
-        if url in cache:
-            return cache[url]
-        try:
-            detail = parsers.parse_message_detail(await self.client.async_get_page(url))
-        except EdookitError as err:
-            _LOGGER.debug("Could not load %s: %s", url, err)
-            return {}
-        except Exception:
-            _LOGGER.debug("Could not parse %s", url, exc_info=True)
-            return {}
-        cache[url] = detail
-        for old_url in list(cache)[:-30]:  # keep the cache small
-            cache.pop(old_url)
-        return detail
+        # GET on a message detail can mark it read. This integration is read-only.
+        return {}
 
     async def _fire_new_items(self, inbox: list[dict[str, Any]]) -> None:
         # One "seen" ledger per account: an item shown for both children is announced once.

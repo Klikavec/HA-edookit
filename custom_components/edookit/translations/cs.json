@@ -70,7 +70,9 @@
           "off_school_interval": "Interval aktualizace mimo vyučování",
           "quiet_start": "Neaktualizovat od",
           "quiet_end": "Neaktualizovat do",
-          "travel_time": "Cesta ze školy domů"
+          "travel_time": "Cesta ze školy domů",
+          "school_student_id": "ID žáka pro panel (prázdné pro jediného žáka)",
+          "school_mqtt_topic": "MQTT topic školního panelu (končí /school/set)"
         },
         "data_description": {
           "timetable_update_time": "Rozvrh se stáhne jednou denně v tento čas (a také při startu Home Assistanta nebo stiskem tlačítka Aktualizovat).",
