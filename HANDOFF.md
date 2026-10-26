@@ -1,10 +1,10 @@
 # Handoff – HA Edookit fork
 
 ## Aktuální stav
-Fork 0.2.0: centrální obnova, soukromé uložení posledních dat, normalizovaný školní MQTT payload a opravené parsery vnořených seznamů. Bez osobních školních dat v repozitáři.
+Fork 0.2.1: centrální obnova, soukromé uložení posledních dat, normalizovaný školní MQTT payload a opravené parsery vnořených seznamů. Bez osobních školních dat v repozitáři.
 
 ## Naposledy dokončeno
-- [CX] 2026-10-26 – Implementace centrálního koordinátoru a kontraktu, 57 regresních testů prošlo; soukromý test s reálným rodičovským účtem také prošel.
+- [CX] 2026-10-26 – Implementace centrálního koordinátoru a kontraktu, 60 regresních testů prošlo; soukromý test s reálným rodičovským účtem také prošel.
 
 ## Příští priority
 1. Nasazení přes HACS a ověření po restartu.

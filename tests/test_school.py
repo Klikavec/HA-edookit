@@ -63,8 +63,8 @@ def test_nested_portal_homework_rows():
     html = """<div class="assignmentsContainer"><ul class="anyCourse incomplete table_row">
       <li class="c1"><h3>Termín odevzdání</h3><p><b>do 26. 10., <span>7:45</span></b></p>
         <p>Matematika<span class="link_info">M - IV.X</span></p></li>
-      <li class="c2"><h3>Popis</h3><div class="bold">
-        <a href="/assignments/detail?assignment=90001">Procvičování</a></div>
+      <li class="c2"><h3>Popis</h3><p><div class="bold">
+        <a href="/assignments/detail?assignment=90001">Procvičování</a></div></p>
         <p>Sešit strana 12</p></li><li class="c3">0 %<input type="checkbox"></li>
       <li class="c4"><div class="smaller"><p><b>Test Teacher</b></p><p>23. 10. 2026, 8:31</p></div></li>
     </ul></div>"""
@@ -97,3 +97,24 @@ def test_portal_links_cannot_leave_school():
     assert safe_url("/assignments/detail?assignment=1", base) == base + "/assignments/detail?assignment=1"
     for url in ("javascript:alert(1)", "https://evil.example/", "//evil.example/"):
         assert safe_url(url, base) is None
+
+
+def test_word_bell_labels_zero_period_and_multiperiod_childcare():
+    html = """<div class="timetable">
+      <div class="period-time" title="0 06:50–07:35" style="left:3.17%"></div>
+      <div class="period-time" title="první 07:45–08:30" style="left:11.90%"></div>
+      <div class="period-time" title="druhá 08:40–09:25" style="left:20.63%"></div>
+      <div class="period-time" title="třetí 09:40–10:25" style="left:30.15%"></div>
+      <a class="lesson" data-posLeft="0" data-size="8.73"><span data-day="2026_10_26"></span>
+        <div class="lessonRow">Ranní družina</div></a>
+      <a class="lesson" data-posLeft="11.90" data-size="7.14"><span data-day="2026_10_26"></span>
+        <div class="lessonRow">M</div></a>
+      <a class="lesson" data-posLeft="20.63" data-size="17"><span data-day="2026_10_26"></span>
+        <div class="lessonRow">Družina</div></a></div>"""
+    blocks = parsers.parse_family_timetables(html)
+    assert [slot["period"] for slot in blocks[0]["bell"]] == [0, 1, 2, 3]
+    assert blocks[0]["bell"][1] == {"period": 1, "start": "07:45", "end": "08:30"}
+    positions = {lesson["subject"]: (lesson["period"], lesson["period_end"]) for lesson in blocks[0]["lessons"]}
+    assert positions["M"] == (1, 1)
+    assert positions["Ranní družina"] == (0, 0)
+    assert positions["Družina"] == (2, 3)

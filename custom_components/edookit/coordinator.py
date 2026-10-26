@@ -162,6 +162,7 @@ class TimetableCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         end = start + timedelta(days=7 * weeks)
 
         source = _opt(entry, CONF_TIMETABLE_SOURCE, SOURCE_AUTO)
+        self._portal_bell = []
         ical_url = _opt(entry, CONF_ICAL_URL)
         student_id = _opt(entry, CONF_API_STUDENT_ID)
         if source == SOURCE_AUTO:
@@ -197,7 +198,7 @@ class TimetableCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             "source": source,
             "lessons": lessons,
             "days": build_days(lessons, start, end),
-            "bell": parsers.bell_schedule(lessons),
+            "bell": self._portal_bell or parsers.bell_schedule(lessons),
             "week_start": start.isoformat(),
             "updated": dt_util.now().isoformat(),
             "sync_status": "ok",
@@ -217,6 +218,8 @@ class TimetableCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
         for html in pages:
             block = pick_child(parsers.parse_family_timetables(html), self.child)
+            if block and block.get("bell"):
+                self._portal_bell = block["bell"]
             add(block["lessons"] if block else [])
 
         # The dashboard widget has this week's lessons incl. topics ("Učivo").
@@ -344,7 +347,11 @@ def build_days(lessons: list[dict[str, Any]], start: date, end: date) -> list[di
                     "weekday": WEEKDAYS_CS[day.weekday()],
                     "weekday_short": WEEKDAYS_CS_SHORT[day.weekday()],
                     "lessons": sorted(
-                        grouped.get(key, []), key=lambda ls: (ls.get("period") or 99, ls.get("start") or "")
+                        grouped.get(key, []),
+                        key=lambda ls: (
+                            ls.get("period") if ls.get("period") is not None else 99,
+                            ls.get("start") or "",
+                        ),
                     ),
                 }
             )
@@ -501,7 +508,8 @@ class EdookitDataCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             grade["subject_short"] = grade["subject"]
             grade["subject"] = subjects.get(grade["subject"], grade["subject"])
         # The grade list pages mix all children; the dashboard widget is per child.
-        grades = widget_grades if self.child.id is not None else parsed.get("evaluations") or widget_grades
+        # The verified per-student widget also applies to a single-child parent account.
+        grades = widget_grades if student_widgets is not None else parsed.get("evaluations") or []
         grades = grades or [
             {
                 "subject": i["title"].split(" - ")[0],
@@ -513,7 +521,7 @@ class EdookitDataCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 "url": i["url"],
             }
             for i in inbox
-            if i["type"] == "evaluation" and i["grade"]
+            if student_widgets is None and i["type"] == "evaluation" and i["grade"]
         ]
         grades.sort(key=lambda g: g.get("date") or "", reverse=True)
         data["grades"] = grades

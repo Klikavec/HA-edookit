@@ -1,4 +1,4 @@
-# Školní panel – fork 0.2.0
+# Školní panel – fork 0.2.1
 
 Tento fork vychází z joshuaaaaa/HA-edookit (MIT). Původní autorství a licence zůstávají zachovány. Kód alternativního projektu nebyl převzat.
 
@@ -9,6 +9,8 @@ Jeden centrální asynchronní koordinátor řídí celý účet; původní koor
 Při chybě jednotlivé oblasti zůstávají poslední data v privátní HA Store a označí se jako stará. Úspěšně potvrzený prázdný seznam se liší od neznámé struktury stránky. Nehotové úkoly po termínu zůstávají viditelné. Položky mají stabilní ID odvozené od portálového ID/URL a deduplikují se.
 
 Příští týden se neprojektuje. Stav `available` vzniká jen z položek se skutečnými daty tohoto týdne. Pokud portál nevrátí potvrzený rozvrh, týden má stav `unavailable`.
+
+Zvonění se přebírá z hlavičky portálu včetně nulté hodiny a českých slovních názvů hodin. Družina a další vícehodinové bloky zachovávají rozsah sloupců; nesmějí posunout číslování běžných vyučovacích hodin. U známek má přednost ověřený widget konkrétního žáka i na rodičovském účtu s jediným dítětem.
 
 Integrace automaticky neotevírá detaily zpráv, anket ani úkolů. Tím se vyhne označení zpráv jako přečtených. Senzor textu zprávy obsahuje pouze dostupný náhled. Neoznačuje úkoly jako hotové a neodesílá omluvenky ani jiné změny školních záznamů. Navigace rozvrhu může měnit filtr ve vlastní HTTP session, kterou nesdílí s běžným prohlížečem.
 

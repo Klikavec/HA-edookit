@@ -1,4 +1,4 @@
-# Vlastní fork 0.2.0
+# Vlastní fork 0.2.1
 
 Tato verze používá jeden centrální koordinátor, zachovává poslední data při chybách a publikuje verzovaný školní MQTT payload. Aktuální chování, instalace a rollback: [Školní panel](docs/school-panel.md).
 

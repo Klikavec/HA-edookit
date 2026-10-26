@@ -90,6 +90,36 @@ async def test_central_quiet_period_and_explicit_manual_refresh(
         assert not any("/detail" in call.args[0] for call in getter.call_args_list)
 
 
+async def test_account_timer_automatically_refreshes_all_views(
+    hass: HomeAssistant, freezer: FrozenDateTimeFactory, mock_client
+) -> None:
+    entry = await _setup(hass, freezer)
+    before = entry.runtime_data.central.data[""]["published_at"]
+    freezer.move_to("2026-09-28 08:56:00+02:00")
+    async_fire_time_changed(hass)
+    await hass.async_block_till_done()
+    assert entry.runtime_data.central.data[""]["published_at"] != before
+    assert entry.runtime_data.children[0].timetable.data["updated"].startswith("2026-09-28T08:56:")
+
+
+async def test_single_child_parent_prefers_verified_grade_widget(hass, freezer, mock_client, pages):
+    from bs4 import BeautifulSoup
+
+    soup = BeautifulSoup(load("family_dashboard.html"), "html.parser")
+    for other in soup.select(".student-container")[1:]:
+        other.decompose()
+    pages["/"] = str(soup)
+    pages["/evaluation/listing"] = """<table><tr><th>Předmět</th><th>Hodnocení</th></tr>
+    <tr><td>Wrong student</td><td>Hodnocení 5</td></tr></table>"""
+    entry = await _setup(hass, freezer)
+    assert len(entry.runtime_data.children) == 1
+    assert entry.runtime_data.children[0].child.id is None
+    grades = entry.runtime_data.children[0].data.data["grades"]
+    assert grades
+    assert all(grade["subject"] != "Wrong student" for grade in grades)
+    assert any(grade["value"] is not None for grade in grades)
+
+
 ENTRY_DATA = {"school": "skola", "username": "rodic@example.com", "password": "secret", "login_method": "auto"}
 
 

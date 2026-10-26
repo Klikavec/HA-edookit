@@ -584,7 +584,11 @@ def _parse_assignment_rows(html: str | BeautifulSoup, today: date | None, *, exa
         subject = ""
         if subject_el:
             subject = clean(subject_el.parent.get_text(" ").replace(subject_el.get_text(" "), ""))
-        description = " ".join(_text(p) for p in row.select(".c2 > p") if _text(p))
+        description = " ".join(
+            _text(p)
+            for p in row.select(".c2 > p")
+            if _text(p) and p.select_one(".bold") is None and _text(p) != _text(link)
+        )
         url = normalize_url(link.get("href"))
         ident = parse_qs(urlsplit(url or "").query).get("assignment", [None])[0]
         created = parse_datetime(_text(created_el), today)
@@ -1030,7 +1034,7 @@ def bell_schedule(lessons: list[dict[str, Any]]) -> list[dict[str, Any]]:
     periods: dict[int, dict[str, Any]] = {}
     for ls in lessons:
         period = ls.get("period")
-        if not period or not ls.get("start"):
+        if period is None or not ls.get("start"):
             continue
         current = periods.setdefault(period, {"period": period, "start": ls["start"], "end": ls.get("end")})
         if _minutes(ls["start"]) < _minutes(current["start"]):
@@ -1075,15 +1079,38 @@ def _hhmm(value: str | None) -> str | None:
 
 def _grid_periods(node: Tag) -> list[dict[str, Any]]:
     periods: dict[int, dict[str, Any]] = {}
+    ordinals = {
+        "první": 1,
+        "druhá": 2,
+        "třetí": 3,
+        "čtvrt": 4,
+        "čtvrtá": 4,
+        "pátá": 5,
+        "šestá": 6,
+        "sedmá": 7,
+        "osmá": 8,
+        "devátá": 9,
+        "desátá": 10,
+    }
     for header in node.select(".period-time"):
-        match = _PERIOD_TITLE_RE.search(clean(header.get("title") or header.get_text(" ")))
+        title = clean(header.get("title") or header.get_text(" "))
+        match = _PERIOD_TITLE_RE.search(title)
+        times = list(_TIME_RE.finditer(title))
         left = _LEFT_RE.search(header.get("style", ""))
-        if not match or not left:
+        if not left or len(times) < 2:
             continue
-        num = int(match.group(1))
+        label = title[: times[0].start()].strip().rstrip(".").casefold()
+        num = int(match.group(1)) if match else int(label) if label.isdigit() else ordinals.get(label)
+        if num is None:
+            continue
         periods.setdefault(
             num,
-            {"period": num, "start": _hhmm(match.group(2)), "end": _hhmm(match.group(3)), "left": float(left.group(1))},
+            {
+                "period": num,
+                "start": _hhmm(times[0].group()),
+                "end": _hhmm(times[1].group()),
+                "left": float(left.group(1)),
+            },
         )
     return sorted(periods.values(), key=lambda p: p["left"])
 
@@ -1146,6 +1173,9 @@ def _parse_grid(node: Tag) -> list[dict[str, Any]]:
         text = clean(el.get_text(" "))
         cancelled = bool(_CANCEL_RE.search(text) or _CANCEL_RE.search(" ".join(classes)))
         period = period_at(left)
+        covered = [p for p in periods if left - 0.05 <= p["left"] < left + size - 0.05]
+        if period is None and covered:
+            period = covered[0]
 
         if "event" in classes:
             covered = [p for p in periods if left - 1 <= p["left"] < left + size - 1] or ([period] if period else [])
@@ -1210,6 +1240,7 @@ def _parse_grid(node: Tag) -> list[dict[str, Any]]:
                 "group": info.get("group"),
                 "topic": info.get("topic"),
                 "period": (period or {}).get("period"),
+                "period_end": covered[-1]["period"] if covered else (period or {}).get("period"),
                 "changed": cancelled or orange is not None or bool(_CHANGE_RE.search(" ".join(classes))),
                 "cancelled": cancelled,
                 "status": status or ("Zrušeno" if cancelled else None),
@@ -1248,13 +1279,22 @@ def parse_family_timetables(html: str | BeautifulSoup) -> list[dict[str, Any]]:
                 "name": clean(" ".join(heading.find_all(string=True, recursive=False))),
                 "class_name": clean(class_el.get_text()) if class_el else None,
                 "lessons": _parse_grid(node),
+                "bell": [{k: p[k] for k in ("period", "start", "end")} for p in _grid_periods(node)],
             }
         )
     if not result:
         # A student account (or another layout): one grid for the whole page.
         node = soup.select_one(".timetable") or soup
         if node.select(".lesson [data-day]"):
-            result.append({"id": None, "name": None, "class_name": None, "lessons": _parse_grid(soup)})
+            result.append(
+                {
+                    "id": None,
+                    "name": None,
+                    "class_name": None,
+                    "lessons": _parse_grid(soup),
+                    "bell": [{k: p[k] for k in ("period", "start", "end")} for p in _grid_periods(node)],
+                }
+            )
     return result
 
 
