@@ -7,7 +7,7 @@ Fork 0.3.0: centrální obnova, soukromá cache, MQTT školní přehled, opraven
 - [CX] 2026-10-26 – 66 regresních HA testů na 2026.10.3, lint a soukromý živý test prošly. Dokončení jednoho úkolu používá čerstvý formulář a potvrzení; detaily zpráv se otevírají pouze explicitní službou.
 
 ## Příští priority
-1. Ověření nového vydání po nasazení přes HACS.
+1. Vydání 0.3.0 ověřeno po nasazení přes HACS a restartu HA2026.10.3. Karta samostatně nasazena včetně kontrastu pro světlé téma.
 2. Dlouhodobé ověření změn HTML a session.
 
 ## Kontext pro druhého agenta
