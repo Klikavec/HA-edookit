@@ -38,12 +38,22 @@ def safe_url(value: str | None, base: str) -> str | None:
     return url if parsed.scheme == "https" and parsed.netloc == urlsplit(base).netloc else None
 
 
-def school_payload(student_id: str, timetable: dict, data: dict, base: str, now: datetime) -> dict[str, Any]:
+def school_payload(
+    student_id: str,
+    timetable: dict,
+    data: dict,
+    base: str,
+    now: datetime,
+    *,
+    entry_id: str = "",
+    allow_actions: bool = False,
+) -> dict[str, Any]:
     """Never project lessons into an unavailable week or claim unknown lists empty."""
     sections = data.get("section_status", {})
     homework = stable_items(data.get("assignments", []), "homework", student_id)
     exams = stable_items(data.get("exams", []), "exam", student_id)
-    for item in homework + exams:
+    messages = stable_items(data.get("messages", [])[:30], "message", student_id)
+    for item in homework + exams + messages:
         item["url"] = safe_url(item.get("url"), base)
     start = now.date() - timedelta(days=now.weekday())
     available = sorted({ls["date"] for ls in timetable.get("lessons", [])})
@@ -60,6 +70,7 @@ def school_payload(student_id: str, timetable: dict, data: dict, base: str, now:
         for i in range(2)
     ]
     statuses = {
+        "messages": sections.get("inbox", "unknown"),
         "timetable": timetable.get("sync_status", "unknown"),
         "homework": sections.get("assignments", "unknown"),
         "exams": sections.get("exams", "unknown"),
@@ -69,10 +80,13 @@ def school_payload(student_id: str, timetable: dict, data: dict, base: str, now:
     return {
         "schema_version": SCHEMA_VERSION,
         "student_id": student_id,
+        "entry_id": entry_id,
+        "actions_enabled": allow_actions,
         "timezone": "Europe/Prague",
         "timetable": {"days": timetable.get("days", []), "bell": timetable.get("bell", []), "weeks": weeks},
         "homework": homework,
         "exams": exams,
+        "messages": messages,
         "last_updated": min(success) if all(success) else None,
         "published_at": now.isoformat(),
         "sync_status": "ok" if all(s == "ok" for s in statuses.values()) else "stale" if any(success) else "error",

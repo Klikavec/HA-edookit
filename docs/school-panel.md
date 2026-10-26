@@ -1,4 +1,4 @@
-# Školní panel – fork 0.2.1
+# Školní panel – fork 0.3.0
 
 Tento fork vychází z joshuaaaaa/HA-edookit (MIT). Původní autorství a licence zůstávají zachovány. Kód alternativního projektu nebyl převzat.
 
@@ -12,7 +12,9 @@ Příští týden se neprojektuje. Stav `available` vzniká jen z položek se sk
 
 Zvonění se přebírá z hlavičky portálu včetně nulté hodiny a českých slovních názvů hodin. Družina a další vícehodinové bloky zachovávají rozsah sloupců; nesmějí posunout číslování běžných vyučovacích hodin. U známek má přednost ověřený widget konkrétního žáka i na rodičovském účtu s jediným dítětem.
 
-Integrace automaticky neotevírá detaily zpráv, anket ani úkolů. Tím se vyhne označení zpráv jako přečtených. Senzor textu zprávy obsahuje pouze dostupný náhled. Neoznačuje úkoly jako hotové a neodesílá omluvenky ani jiné změny školních záznamů. Navigace rozvrhu může měnit filtr ve vlastní HTTP session, kterou nesdílí s běžným prohlížečem.
+Integrace automaticky neotevírá detaily zpráv, anket ani úkolů. Senzor textu zprávy obsahuje pouze dostupný náhled. Volba `allow_school_actions` (výchozí vypnuto) povoluje službu `edookit.school_action`: `complete_homework` dokončí jeden vybraný úkol a `read_message` otevře detail a označí zprávu jako přečtenou. Vyžaduje `config_entry_id`, `student_id` a stabilní `item_id` z aktuálních dat; nepřijímá libovolné URL. Dokončení používá čerstvý formulář a následné ověření, již dokončený úkol nepřepíná zpět. Náhled zpráv nic neoznačuje. Omluvenky ani odesílání zpráv podporovány nejsou. Navigace rozvrhu může měnit filtr ve vlastní HTTP session, kterou nesdílí s běžným prohlížečem.
+
+Dokončení rozpoznává checkbox i portálové značky `.finished_assignment` a tlačítko pro zrušení dokončení. Hotové úkoly jsou z přehledu vyřazeny. Karta i tablet nabízejí akce až po povolení této volby a výsledek mění až po potvrzení služby. Chyba ponechá položku viditelnou.
 
 U rodinného účtu s více dětmi se neověřené společné úkoly a písemky do jednotlivých dětských přehledů neposílají; stav je `unverified_student`. Je nutné ověřit přepínání žáka či explicitní identifikátory v datech. Jeden žák na účtu tento problém nemá.
 
@@ -23,21 +25,25 @@ Původní entity zůstávají. Přibývá senzor **Školní přehled**, jehož a
 V možnostech integrace lze nastavit:
 - `school_student_id`: portálové ID vybraného žáka; prázdný řetězec pro účet s jediným žákem.
 - `school_mqtt_topic`: vlastní topic končící `/school/set`, například `yoga_panel/PANEL_ID/school/set`. Prázdné pole publikování vypíná.
+- `allow_school_actions`: explicitní dokončení úkolů a čtení zpráv; výchozí `false`.
 
 MQTT používá QoS 1 a retain. Obnovený panel po restartu obdrží poslední payload. Panel navíc uchovává svou lokální kopii a po restartu ji označí jako starou. Starý `dashboard/set` kontrakt ani domácí automatizace se nemění. Při chybě MQTT zůstávají data dostupná v HA; další pravidelná či ruční obnova publikování zopakuje.
 
 ```json
 {
   "schema_version": 1,
+  "entry_id": "CONFIG_ENTRY_ID",
+  "actions_enabled": false,
   "student_id": "",
   "timezone": "Europe/Prague",
   "timetable": {"days": [], "bell": [], "weeks": []},
   "homework": [],
   "exams": [],
+  "messages": [],
   "last_updated": null,
   "published_at": "2026-01-01T12:00:00+01:00",
   "sync_status": "loading",
-  "sections": {"timetable": "unknown", "homework": "unknown", "exams": "unknown"}
+  "sections": {"timetable": "unknown", "homework": "unknown", "exams": "unknown", "messages": "unknown"}
 }
 ```
 
@@ -46,6 +52,8 @@ Tento příklad je syntetický. `days` obsahuje datum a seznam `lessons`; bloky 
 Panel musí používat `textContent`, nerozbalovat školní obsah jako HTML, validovat verzi a rozměry payloadu a rozlišovat chybu od prázdného seznamu. Topic obsahuje osobní školní údaje; přístup k brokeru a HA zálohám musí zůstat soukromý.
 
 ## Instalace, aktualizace a rollback
+
+Pro HA dashboard na PC instalujte samostatnou [kartu školního přehledu](../edookit-school-card/README.md). Integrace ji sama neobsluhuje ani neregistruje.
 
 1. Před změnami vytvořit zálohu Home Assistanta a dotčeného panelu. Nainstalovat pouze jednu integraci domény `edookit`.
 2. V HACS přidat `Klikavec/HA-edookit` jako integraci a instalovat otestovanou verzi. Restartovat HA v dohodnutém čase.

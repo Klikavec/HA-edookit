@@ -603,7 +603,9 @@ def _parse_assignment_rows(html: str | BeautifulSoup, today: date | None, *, exa
                 "assigned": created.isoformat() if created else None,
                 "description": description,
                 "teacher": _text(row.select_one(".c4 b")),
-                "done": bool(checkbox and checkbox.has_attr("checked"))
+                "done": row.select_one(".finished_assignment") is not None
+                or row.select_one("input[name^='assignments[u']") is not None
+                or bool(checkbox and checkbox.has_attr("checked"))
                 or bool(set(row.get("class", [])) & {"done", "completed", "submitted"}),
                 "url": url,
             }

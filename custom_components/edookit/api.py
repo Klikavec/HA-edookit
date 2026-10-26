@@ -43,7 +43,7 @@ import aiohttp
 from bs4 import BeautifulSoup
 from yarl import URL
 
-from .parsers import is_login_page, parse_children, parse_dashboard_children
+from .parsers import is_login_page, parse_assignments, parse_children, parse_dashboard_children, parse_message_detail
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -606,6 +606,64 @@ class EdookitClient:
     def invalidate_timetable_cache(self) -> None:
         """A manual refresh must request current portal data even inside the cache TTL."""
         self._timetable_cache = None
+
+    def _school_item_id(self, url: str, path: str, parameter: str) -> str:
+        """Actions only target an exact known portal detail route with a numeric ID."""
+        parsed = urlparse(urljoin(self.base_url, url))
+        if parsed.scheme != "https" or parsed.netloc != urlparse(self.base_url).netloc or parsed.path != path:
+            raise EdookitError("Invalid school action target")
+        identity = parse_qs(parsed.query).get(parameter, [""])[0]
+        if not identity.isdigit():
+            raise EdookitError("Invalid school item ID")
+        return identity
+
+    async def async_complete_assignment(self, url: str) -> bool:
+        """Idempotently finish ONE assignment, using a freshly fetched portal form."""
+        identity = self._school_item_id(url, "/assignments/detail", "assignment")
+        page = await self.async_get_page("/assignments/")
+        item = next((item for item in parse_assignments(page) if str(item.get("id")) == identity), None)
+        if item is None:
+            raise EdookitError("Assignment is no longer in the verified portal list")
+        if item.get("done"):
+            return False
+        soup = BeautifulSoup(page, "html.parser")
+        link = soup.find("a", href=re.compile(rf"^/assignments/detail\?assignment={identity}$"))
+        row = link.find_parent("ul", class_="table_row") if link else None
+        form = row.find_parent("form") if row else None
+        submit = row.find("input", attrs={"name": f"assignments[s{identity}]"}) if row else None
+        checkbox = row.find("input", attrs={"name": f"assignments[{identity}]"}) if row else None
+        if form is None or submit is None or checkbox is None:
+            raise EdookitError("Assignment completion form changed")
+        action = urljoin(self.base_url, form.get("action") or "/assignments/")
+        if action != f"{self.base_url}/assignments/":
+            raise EdookitError("Unexpected assignment form action")
+        body = {}
+        for field in form.find_all("input", attrs={"type": "hidden"}):
+            name = field.get("name", "")
+            if name and (not name.startswith("assignments[") or name == f"assignments[h{identity}]"):
+                body[name] = field.get("value", "")
+        if "assignmentsGrid" not in body.get("_do", ""):
+            raise EdookitError("Assignment form action could not be verified")
+        body[checkbox["name"]] = checkbox.get("value", "on")
+        body[submit["name"]] = submit.get("value", "Označit jako hotové")
+        response = await self._request(
+            "POST",
+            action,
+            data=body,
+            headers={"Origin": self.base_url, "Referer": action, "X-CSRF-Token": self._csrf()},
+        )
+        if response.status >= 400 or is_login_page(response.text, response.url):
+            raise EdookitError("Assignment completion was not accepted")
+        checked = parse_assignments(await self.async_get_page("/assignments/"))
+        remaining = next((item for item in checked if str(item.get("id")) == identity), None)
+        if remaining is not None and not remaining.get("done"):
+            raise EdookitError("Assignment completion could not be confirmed")
+        return True
+
+    async def async_read_message(self, url: str) -> dict[str, Any]:
+        """Explicit user action: opening a message detail also marks it read."""
+        self._school_item_id(url, "/messages/detail", "message")
+        return parse_message_detail(await self.async_get_page(url))
 
     # -------------------------------------------------------------- REST API
 

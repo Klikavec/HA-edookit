@@ -81,7 +81,7 @@ class SchoolSensor(EdookitEntity, SensorEntity):
 
     _attr_name = "Školní přehled"
     _attr_icon = "mdi:school"
-    _unrecorded_attributes = frozenset({"timetable", "homework", "exams"})
+    _unrecorded_attributes = frozenset({"timetable", "homework", "exams", "messages"})
 
     def __init__(self, entry, child):
         super().__init__(entry, child, entry.runtime_data.central, "school")

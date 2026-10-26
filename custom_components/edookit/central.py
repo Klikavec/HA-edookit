@@ -82,7 +82,13 @@ class SchoolCoordinator(DataUpdateCoordinator):
                         }
                     view.async_set_updated_data(stale)
             result[child.child.key] = school_payload(
-                child.child.key, child.timetable.data or {}, child.data.data or {}, self.runtime.client.base_url, now
+                child.child.key,
+                child.timetable.data or {},
+                child.data.data or {},
+                self.runtime.client.base_url,
+                now,
+                entry_id=self.config_entry.entry_id,
+                allow_actions=self.config_entry.options.get("allow_school_actions", False),
             )
 
         school_day = any(

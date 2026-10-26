@@ -120,6 +120,51 @@ async def test_single_child_parent_prefers_verified_grade_widget(hass, freezer, 
     assert any(grade["value"] is not None for grade in grades)
 
 
+async def test_school_service_requires_opt_in_and_rejects_unknown_items(hass, freezer, mock_client, pages):
+    from homeassistant.exceptions import ServiceValidationError
+
+    pages["/assignments/"] = HOMEWORK_PAGE
+    entry = await _setup(hass, freezer)
+    payload = entry.runtime_data.central.data[""]
+    item = payload["homework"][0]
+    call = {"config_entry_id": entry.entry_id, "student_id": "", "item_id": item["id"], "action": "complete_homework"}
+    with patch.object(entry.runtime_data.client, "async_complete_assignment", AsyncMock()) as complete:
+        with pytest.raises(ServiceValidationError):
+            await hass.services.async_call(DOMAIN, "school_action", call, blocking=True, return_response=True)
+        complete.assert_not_called()
+    hass.config_entries.async_update_entry(entry, options={**entry.options, "allow_school_actions": True})
+    await hass.async_block_till_done()
+    with patch.object(entry.runtime_data.client, "async_complete_assignment", AsyncMock(return_value=True)) as complete:
+        with pytest.raises(ServiceValidationError):
+            await hass.services.async_call(
+                DOMAIN, "school_action", {**call, "item_id": "unknown"}, blocking=True, return_response=True
+            )
+        complete.assert_not_called()
+        response = await hass.services.async_call(DOMAIN, "school_action", call, blocking=True, return_response=True)
+        assert response == {"ok": True, "changed": True}
+        complete.assert_awaited_once_with("https://skola.edookit.net/assignments/detail?assignment=999")
+
+
+async def test_message_content_is_only_read_on_explicit_action(hass, freezer, mock_client):
+    entry = await _setup(hass, freezer)
+    hass.config_entries.async_update_entry(entry, options={"allow_school_actions": True})
+    await hass.async_block_till_done()
+    item = entry.runtime_data.central.data[""]["messages"][0]
+    with patch.object(
+        entry.runtime_data.client, "async_read_message", AsyncMock(return_value={"text": "Synthetic full message"})
+    ) as read:
+        read.assert_not_called()
+        response = await hass.services.async_call(
+            DOMAIN,
+            "school_action",
+            {"config_entry_id": entry.entry_id, "student_id": "", "item_id": item["id"], "action": "read_message"},
+            blocking=True,
+            return_response=True,
+        )
+        read.assert_awaited_once()
+        assert response["detail"]["text"] == "Synthetic full message"
+
+
 ENTRY_DATA = {"school": "skola", "username": "rodic@example.com", "password": "secret", "login_method": "auto"}
 
 

@@ -137,6 +137,31 @@ def _entries(hass: HomeAssistant, call: ServiceCall) -> list[EdookitConfigEntry]
 
 
 def _register_services(hass: HomeAssistant) -> None:
+    async def school_action(call: ServiceCall) -> ServiceResponse:
+        entry = next(iter(_entries(hass, call)))
+        if not entry.options.get("allow_school_actions", False):
+            raise ServiceValidationError("School actions are disabled")
+        student_id = call.data["student_id"]
+        child = next((child for child in entry.runtime_data.children if child.child.key == student_id), None)
+        if child is None:
+            raise ServiceValidationError("Unknown student")
+        action = call.data["action"]
+        key = "homework" if action == "complete_homework" else "messages"
+        payload = (entry.runtime_data.central.data or {}).get(student_id, {})
+        item = next((item for item in payload.get(key, []) if item.get("id") == call.data["item_id"]), None)
+        if item is None or not item.get("url"):
+            raise ServiceValidationError("Item is not in the verified school data")
+        try:
+            async with entry.runtime_data.client.as_child(child.child):
+                if action == "complete_homework":
+                    result = {"changed": await entry.runtime_data.client.async_complete_assignment(item["url"])}
+                else:
+                    result = {"detail": await entry.runtime_data.client.async_read_message(item["url"])}
+            await entry.runtime_data.central.async_manual_refresh()
+        except EdookitError as err:
+            raise ServiceValidationError("School action could not be confirmed") from err
+        return {"ok": True, **result}
+
     async def refresh(call: ServiceCall) -> None:
         for entry in _entries(hass, call):
             await entry.runtime_data.central.async_manual_refresh()
@@ -196,6 +221,20 @@ def _register_services(hass: HomeAssistant) -> None:
         return result
 
     entry_schema = {vol.Optional(ATTR_ENTRY_ID): cv.string}
+    hass.services.async_register(
+        DOMAIN,
+        "school_action",
+        school_action,
+        schema=vol.Schema(
+            {
+                vol.Required(ATTR_ENTRY_ID): cv.string,
+                vol.Optional("student_id", default=""): cv.string,
+                vol.Required("item_id"): cv.string,
+                vol.Required("action"): vol.In(["complete_homework", "read_message"]),
+            }
+        ),
+        supports_response=SupportsResponse.ONLY,
+    )
     hass.services.async_register(
         DOMAIN,
         SERVICE_REFRESH,

@@ -1,6 +1,8 @@
-# Vlastní fork 0.2.1
+# Vlastní fork 0.3.0
 
 Tato verze používá jeden centrální koordinátor, zachovává poslední data při chybách a publikuje verzovaný školní MQTT payload. Aktuální chování, instalace a rollback: [Školní panel](docs/school-panel.md).
+
+Nově rozpoznává dokončené úkoly i bez checkboxu. Volba **Povolit školní akce** umožňuje explicitně dokončit vybraný úkol nebo otevřít a označit zprávu jako přečtenou. Bez této volby zůstává účet pouze ke čtení. Samostatná [karta školního přehledu pro PC](edookit-school-card/README.md) sdílí zobrazení rozvrhu, úkolů a písemek s panelem.
 
 Níže je původní dokumentace upstreamu; jeho denní časovače a automatické čtení detailů zpráv se na tento fork nevztahují. MIT licence a autorství zůstávají zachovány.
 

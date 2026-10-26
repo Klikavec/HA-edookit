@@ -1,3 +1,25 @@
+school_action:
+  fields:
+    config_entry_id:
+      required: true
+      selector:
+        config_entry:
+          integration: edookit
+    student_id:
+      selector:
+        text:
+    item_id:
+      required: true
+      selector:
+        text:
+    action:
+      required: true
+      selector:
+        select:
+          options:
+            - complete_homework
+            - read_message
+
 refresh:
   fields:
     config_entry_id:

@@ -72,7 +72,8 @@
           "quiet_end": "No refreshes until",
           "travel_time": "Travel time from school to home",
           "school_student_id": "ID žáka pro panel (prázdné pro jediného žáka)",
-          "school_mqtt_topic": "MQTT topic školního panelu (končí /school/set)"
+          "school_mqtt_topic": "MQTT topic školního panelu (končí /school/set)",
+          "allow_school_actions": "Povolit označení úkolů a čtení zpráv z panelu"
         },
         "data_description": {
           "timetable_update_time": "The timetable is downloaded once a day at this time (and when Home Assistant starts or you press Refresh).",
@@ -273,6 +274,10 @@
           "description": "Edookit account (all when empty)."
         }
       }
+    },
+    "school_action": {
+      "name": "Školní akce",
+      "description": "Výslovně označí vybraný úkol jako splněný nebo otevře a označí zprávu jako přečtenou."
     }
   },
   "exceptions": {

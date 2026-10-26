@@ -1,16 +1,16 @@
 # Handoff – HA Edookit fork
 
 ## Aktuální stav
-Fork 0.2.1: centrální obnova, soukromé uložení posledních dat, normalizovaný školní MQTT payload a opravené parsery vnořených seznamů. Bez osobních školních dat v repozitáři.
+Fork 0.3.0: centrální obnova, soukromá cache, MQTT školní přehled, opravené rozpoznání dokončených úkolů a volitelné explicitní školní akce. Samostatná PC karta v edookit-school-card; integrace ji neobsluhuje. Žádná osobní školní data v repozitáři.
 
 ## Naposledy dokončeno
-- [CX] 2026-10-26 – Implementace centrálního koordinátoru a kontraktu, 60 regresních testů prošlo; soukromý test s reálným rodičovským účtem také prošel.
+- [CX] 2026-10-26 – 66 regresních HA testů na 2026.10.3, lint a soukromý živý test prošly. Dokončení jednoho úkolu používá čerstvý formulář a potvrzení; detaily zpráv se otevírají pouze explicitní službou.
 
 ## Příští priority
-1. Nasazení přes HACS a ověření po restartu.
-2. Dlouhodobé ověření obnovy session a změn portálu.
+1. Ověření nového vydání po nasazení přes HACS.
+2. Dlouhodobé ověření změn HTML a session.
 
 ## Kontext pro druhého agenta
-- Původní MIT licence a autorství zachovány. Nové chování viz docs/school-panel.md; původní README popisuje upstream.
-- Žádné automatické čtení detailů zpráv. Vícežákové neověřené seznamy mají stav unverified_student.
-- Osobní záznamy portálu, přístupy a skutečné vizuální důkazy jsou mimo repozitář.
+- MIT licence a autorství zachovány. Aktuální chování viz docs/school-panel.md.
+- allow_school_actions je výchozí false; uživatel může zapnout dokončení vybraného úkolu a čtení zprávy. Automatické čtení detailů zůstává zakázané.
+- Vícežákové neověřené seznamy mají stav unverified_student. Privátní data a screenshoty jsou mimo repozitář.

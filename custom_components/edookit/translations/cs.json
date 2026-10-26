@@ -72,7 +72,8 @@
           "quiet_end": "Neaktualizovat do",
           "travel_time": "Cesta ze školy domů",
           "school_student_id": "ID žáka pro panel (prázdné pro jediného žáka)",
-          "school_mqtt_topic": "MQTT topic školního panelu (končí /school/set)"
+          "school_mqtt_topic": "MQTT topic školního panelu (končí /school/set)",
+          "allow_school_actions": "Povolit označení úkolů a čtení zpráv z panelu"
         },
         "data_description": {
           "timetable_update_time": "Rozvrh se stáhne jednou denně v tento čas (a také při startu Home Assistanta nebo stiskem tlačítka Aktualizovat).",
@@ -273,6 +274,10 @@
           "description": "Účet Edookit (prázdné = všechny)."
         }
       }
+    },
+    "school_action": {
+      "name": "Školní akce",
+      "description": "Výslovně označí vybraný úkol jako splněný nebo otevře a označí zprávu jako přečtenou."
     }
   },
   "exceptions": {

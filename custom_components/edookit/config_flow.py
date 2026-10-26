@@ -201,6 +201,7 @@ class EdookitOptionsFlow(OptionsFlow):
             )
 
         schema: dict[Any, Any] = {
+            vol.Required("allow_school_actions", default=opts.get("allow_school_actions", False)): BooleanSelector(),
             vol.Required(CONF_WEEKS, default=opts.get(CONF_WEEKS, DEFAULT_WEEKS)): NumberSelector(
                 NumberSelectorConfig(min=1, max=4, step=1, mode=NumberSelectorMode.SLIDER)
             ),
